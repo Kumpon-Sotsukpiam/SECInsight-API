@@ -1,0 +1,364 @@
+# SEC Income Statement API
+
+A FastAPI-based REST API for retrieving and analyzing income statement data from SEC EDGAR filings using XBRL data.
+
+## 🚀 Features
+
+- **Comprehensive Financial Data**: Access 23+ income statement line items including revenue, expenses, profits, EPS, and more
+- **Flexible Date Filtering**: Query data by date range or get all available periods
+- **Multiple Output Formats**: Get quarterly or trailing-twelve-month (TTM) data
+- **Smart Data Derivation**: Automatically calculates missing fields when possible (e.g., Cost of Revenue = Revenue - Gross Profit)
+- **Formatted Output**: Returns both raw numbers and human-readable formatted values ($1.5B, $234.5M)
+- **SEC Compliant**: Includes proper User-Agent headers and rate limiting
+
+## 📋 Requirements
+
+```bash
+fastapi>=0.104.0
+uvicorn>=0.24.0
+pydantic>=2.0.0
+requests>=2.31.0
+pandas>=2.0.0
+numpy>=1.24.0
+```
+
+## 🔧 Installation
+
+1. Clone or download the repository
+2. Install dependencies:
+
+```bash
+pip install fastapi uvicorn pydantic requests pandas numpy
+```
+
+## 🏃 Running the API
+
+### Option 1: Direct Python
+```bash
+python app.py
+```
+
+### Option 2: Using Uvicorn
+```bash
+uvicorn app:app --reload --host 0.0.0.0 --port 8000
+```
+
+The API will be available at:
+- **API Base**: `http://localhost:8000`
+- **Interactive Docs**: `http://localhost:8000/docs`
+- **ReDoc**: `http://localhost:8000/redoc`
+
+## 📖 API Documentation
+
+### Endpoints
+
+#### `GET /`
+Root endpoint with API information.
+
+#### `GET /health`
+Health check endpoint.
+
+#### `POST /income-statement`
+Retrieve income statement data from SEC filings.
+
+**Request Body:**
+```json
+{
+  "cik": "320193",
+  "user_agent": "yourname@domain.com MyApp/1.0",
+  "start_date": "2022-01-01",
+  "end_date": "2024-12-31",
+  "required_fields": [
+    "Total Revenues",
+    "Cost Of Revenues",
+    "Gross Profit",
+    "Operating Income",
+    "Net Income"
+  ],
+  "output_type": "quarterly"
+}
+```
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cik` | string | ✅ Yes | Company CIK number (e.g., "320193" for Apple) |
+| `user_agent` | string | ✅ Yes | Your email for SEC compliance (e.g., "yourname@domain.com MyApp/1.0") |
+| `start_date` | string | ❌ No | Start date in YYYY-MM-DD format |
+| `end_date` | string | ❌ No | End date in YYYY-MM-DD format |
+| `required_fields` | array | ❌ No | List of income statement line items (defaults to 23 fields) |
+| `output_type` | string | ❌ No | "quarterly" or "ttm" (default: "quarterly") |
+
+**Response:**
+```json
+{
+  "cik": "320193",
+  "company_name": "Apple Inc.",
+  "output_type": "quarterly",
+  "data": {
+    "Total Revenues": {
+      "2023Q1": {
+        "raw": 94836000000,
+        "formatted": "$94.84B"
+      },
+      "2023Q2": {
+        "raw": 81797000000,
+        "formatted": "$81.80B"
+      }
+    },
+    "Net Income": {
+      "2023Q1": {
+        "raw": 23615000000,
+        "formatted": "$23.62B"
+      }
+    }
+  },
+  "periods": ["2023Q1", "2023Q2", "2023Q3", "2023Q4"],
+  "message": "Success"
+}
+```
+
+## 📊 Available Fields
+
+### Revenue & Costs
+- Total Revenues
+- Cost Of Revenues
+- Gross Profit
+
+### Operating Expenses
+- R&D Expenses
+- Selling General & Admin Expenses
+- Other Operating Expenses, Total
+- Operating Expenses
+
+### Income Metrics
+- Operating Income
+- EBIT
+- EBITDA
+
+### Interest & Non-Operating
+- Interest Expense, Total
+- Interest And Investment Income
+- Net Interest Expenses
+- Other Non Operating Expenses, Total
+
+### Pre-Tax & Unusual Items
+- EBT, Excl. Unusual Items
+- EBT, Incl. Unusual Items
+- Gain (Loss) On Sale Of Assets
+- Other Unusual Items, Total
+
+### Tax & Net Income
+- Income Tax Expense
+- Net Income
+- Net Income to Company
+- Minority Interest
+- Net Income to Common Excl. Extra Items
+- Preferred Dividend and Other Adjustments
+
+### Per Share Metrics
+- Basic EPS - Continuing Operations
+- Diluted EPS - Continuing Operations
+- Basic Weighted Average Shares Outstanding
+- Diluted Weighted Average Shares Outstanding
+- Dividend Per Share
+
+## 💡 Usage Examples
+
+### Example 1: Get All Available Data (Default)
+```bash
+curl -X POST "http://localhost:8000/income-statement" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cik": "320193",
+    "user_agent": "yourname@domain.com MyApp/1.0",
+    "output_type": "quarterly"
+  }'
+```
+
+### Example 2: Get Specific Fields for Date Range
+```bash
+curl -X POST "http://localhost:8000/income-statement" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cik": "1318605",
+    "user_agent": "yourname@domain.com MyApp/1.0",
+    "start_date": "2023-01-01",
+    "end_date": "2023-12-31",
+    "required_fields": [
+      "Total Revenues",
+      "Gross Profit",
+      "Operating Income",
+      "Net Income",
+      "Basic EPS - Continuing Operations"
+    ],
+    "output_type": "quarterly"
+  }'
+```
+
+### Example 3: Get TTM (Trailing Twelve Months) Data
+```bash
+curl -X POST "http://localhost:8000/income-statement" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cik": "789019",
+    "user_agent": "yourname@domain.com MyApp/1.0",
+    "required_fields": ["Total Revenues", "Net Income", "EBIT"],
+    "output_type": "ttm"
+  }'
+```
+
+### Example 4: Python Requests
+```python
+import requests
+
+url = "http://localhost:8000/income-statement"
+payload = {
+    "cik": "320193",
+    "user_agent": "yourname@domain.com MyApp/1.0",
+    "start_date": "2022-01-01",
+    "end_date": "2024-12-31",
+    "required_fields": [
+        "Total Revenues",
+        "Cost Of Revenues",
+        "Gross Profit",
+        "Net Income"
+    ],
+    "output_type": "quarterly"
+}
+
+response = requests.post(url, json=payload)
+data = response.json()
+
+print(f"Company: {data['company_name']}")
+print(f"Periods: {data['periods']}")
+print(f"Revenue Q1 2023: {data['data']['Total Revenues']['2023Q1']['formatted']}")
+```
+
+### Example 5: JavaScript/Node.js Fetch
+```javascript
+const response = await fetch('http://localhost:8000/income-statement', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    cik: '320193',
+    user_agent: 'yourname@domain.com MyApp/1.0',
+    output_type: 'ttm',
+    required_fields: ['Total Revenues', 'Net Income', 'Basic EPS - Continuing Operations']
+  })
+});
+
+const data = await response.json();
+console.log(data);
+```
+
+## 🔍 Finding Company CIK Numbers
+
+You can find company CIK numbers on the SEC website:
+1. Visit https://www.sec.gov/edgar/searchedgar/companysearch.html
+2. Search for the company name
+3. The CIK is displayed in the search results
+
+**Common CIK Numbers:**
+- Apple Inc.: `320193`
+- Microsoft Corp: `789019`
+- Tesla Inc.: `1318605`
+- Amazon.com Inc.: `1018724`
+- Alphabet Inc. (Google): `1652044`
+
+## ⚙️ Configuration
+
+### User Agent Requirement
+The SEC requires a User-Agent header with your contact information. Format:
+```
+yourname@domain.com MyAppName/Version
+```
+
+**Important:** Replace with your actual email address to comply with SEC regulations.
+
+### Rate Limiting
+The API includes built-in retry logic for SEC requests with exponential backoff. However, be mindful of SEC rate limits:
+- Maximum 10 requests per second
+- Requests should include proper User-Agent
+
+## 🔒 Data Derivation Logic
+
+The API automatically derives missing fields when possible:
+
+1. **Cost of Revenue** = Revenue - Gross Profit (if missing)
+2. **Gross Profit** = Revenue - Cost of Revenue (if missing)
+3. **Operating Expenses** = R&D + SG&A (if missing)
+4. **Operating Income** = Gross Profit - Operating Expenses (if missing)
+
+## 📝 Output Format
+
+Each field returns both:
+- **`raw`**: Numerical value in USD
+- **`formatted`**: Human-readable string with units:
+  - Billions: `$1.5B`
+  - Millions: `$234.5M`
+  - Thousands: `$5.2K`
+
+## ⚠️ Error Handling
+
+Common errors and solutions:
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `404` | Invalid CIK | Verify the CIK number is correct |
+| `500` | SEC API timeout | Retry after a few seconds |
+| `422` | Invalid request format | Check date format (YYYY-MM-DD) and output_type |
+| `Rate limit` | Too many requests | Wait and retry with backoff |
+
+## 🧪 Testing
+
+### Test the Health Endpoint
+```bash
+curl http://localhost:8000/health
+```
+
+### Test with Interactive Docs
+1. Open `http://localhost:8000/docs`
+2. Click on `/income-statement` endpoint
+3. Click "Try it out"
+4. Fill in the parameters
+5. Click "Execute"
+
+## 📄 License
+
+This project is provided as-is for educational and research purposes. Please comply with SEC usage policies when accessing their data.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit issues or pull requests.
+
+## 📧 Support
+
+For questions or issues, please create an issue in the repository or contact the maintainer.
+
+## ⚡ Performance Tips
+
+1. **Cache responses**: Store frequently accessed data to reduce SEC API calls
+2. **Batch requests**: Request multiple fields at once instead of separate calls
+3. **Use date ranges**: Limit data to needed periods to improve response time
+4. **TTM calculation**: Pre-calculate TTM data if accessing frequently
+
+## 🔮 Future Enhancements
+
+- [ ] Balance sheet data support
+- [ ] Cash flow statement support
+- [ ] Multiple company comparison
+- [ ] Growth rate calculations
+- [ ] Margin trend analysis
+- [ ] Export to CSV/Excel
+- [ ] Caching layer with Redis
+- [ ] Authentication & API keys
+- [ ] Rate limiting per user
+- [ ] Webhook notifications
+
+---
+
+**Built with ❤️ using FastAPI and SEC EDGAR data**
