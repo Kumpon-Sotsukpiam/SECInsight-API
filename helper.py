@@ -124,7 +124,6 @@ def format_usd_short(value):
     else:
         return f"{sign}${abs_val:.2f}"
 
-
 def build_income_statement(
     cik: str,
     ua: str,
@@ -142,23 +141,15 @@ def build_income_statement(
     # Define metric mappings
     income_alias = {
         # Revenue
-        "Revenue": [
-            "SalesRevenueNet",
-            "Revenues",
-            "RevenueFromContractWithCustomerExcludingAssessedTax",
-            "SalesRevenueGoodsNet"
-        ],
         "Total Revenues": [
             "Revenues",
             "SalesRevenueNet",
             "RevenueFromContractWithCustomerExcludingAssessedTax"
         ],
-        
         # Cost & Gross Profit
         "Cost of Revenue": ["CostOfRevenue", "CostOfGoodsAndServicesSold"],
         "Cost Of Revenues": ["CostOfRevenue", "CostOfGoodsAndServicesSold"],
         "Gross Profit": ["GrossProfit"],
-        
         # Operating Expenses
         "R&D": ["ResearchAndDevelopmentExpense"],
         "R&D Expenses": ["ResearchAndDevelopmentExpense"],
@@ -178,11 +169,9 @@ def build_income_statement(
             "OtherOperatingIncomeExpenseNet",
             "OtherCostAndExpenseOperating"
         ],
-        
         # Operating Income
         "Operating Income": ["OperatingIncomeLoss"],
         "EBIT": ["OperatingIncomeLoss"],
-        
         # Interest & Non-Operating
         "Interest Expense, Total": [
             "InterestExpense",
@@ -201,7 +190,6 @@ def build_income_statement(
             "NonoperatingIncomeExpense",
             "OtherNonoperatingIncomeExpense"
         ],
-        
         # Pre-Tax Income
         "EBT, Excl. Unusual Items": [
             "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest"
@@ -217,7 +205,6 @@ def build_income_statement(
             "UnusualOrInfrequentItemNetOfInsuranceProceeds",
             "GainLossRelatedToLitigationSettlement"
         ],
-        
         # Tax & Net Income
         "Income Tax": ["IncomeTaxExpenseBenefit"],
         "Income Tax Expense": ["IncomeTaxExpenseBenefit"],
@@ -237,7 +224,6 @@ def build_income_statement(
             "PreferredStockDividendsAndOtherAdjustments",
             "DividendsPreferredStock"
         ],
-        
         # EPS
         "Basic EPS - Continuing Operations": [
             "EarningsPerShareBasic",
@@ -247,7 +233,6 @@ def build_income_statement(
             "EarningsPerShareDiluted",
             "IncomeLossFromContinuingOperationsPerDilutedShare"
         ],
-        
         # Shares Outstanding
         "Basic Weighted Average Shares Outstanding": [
             "WeightedAverageNumberOfSharesOutstandingBasic"
@@ -255,55 +240,44 @@ def build_income_statement(
         "Diluted Weighted Average Shares Outstanding": [
             "WeightedAverageNumberOfDilutedSharesOutstanding"
         ],
-        
         # Dividends
         "Dividend Per Share": [
             "CommonStockDividendsPerShareDeclared",
             "CommonStockDividendsPerShareCashPaid"
         ],
-        
         # EBITDA (Note: Usually calculated, rarely reported directly)
         "EBITDA": [
             "EarningsBeforeInterestTaxesDepreciationAndAmortization"
         ],
     }
-    
     # Extract data for each metric
     raw_rows = {}
     all_quarters = set()
-    
     for friendly in required_fields:
         tags = income_alias.get(friendly, [])
         if not tags:
             raw_rows[friendly] = pd.Series(dtype=float, name=friendly)
             continue
-            
         df_all = pd.concat(
             [obs_for_metric(facts, t) for t in tags],
             ignore_index=True
         ) if tags else pd.DataFrame()
-        
         if df_all.empty:
             raw_rows[friendly] = pd.Series(dtype=float, name=friendly)
             continue
-        
         # Filter to USD only
         if "USD" in df_all.get("unit", pd.Series()).unique():
             df_all = df_all[df_all["unit"] == "USD"].copy()
-        
         dq = pick_quarterly(df_all)
         if dq.empty:
             raw_rows[friendly] = pd.Series(dtype=float, name=friendly)
             continue
-        
         ser = dq.set_index("Quarter")["value"].sort_index()
         ser.name = friendly
         raw_rows[friendly] = ser
         all_quarters.update(ser.index.tolist())
-    
     # Create master column index
     master_cols = sorted(all_quarters)
-    
     # Align all rows to master columns
     aligned_rows = []
     for name in required_fields:
@@ -311,44 +285,25 @@ def build_income_statement(
         s = s.reindex(master_cols)
         s.name = name
         aligned_rows.append(s)
-    
     is_q = pd.DataFrame(aligned_rows)
     is_q = is_q.apply(pd.to_numeric, errors="coerce")
     
-    # Derive missing values
-    if "Cost of Revenue" in is_q.index and "Revenue" in is_q.index and "Gross Profit" in is_q.index:
-        mask = is_q.loc["Cost of Revenue"].isna()
-        if mask.any():
-            computed = is_q.loc["Revenue"] - is_q.loc["Gross Profit"]
-            is_q.loc["Cost of Revenue"] = is_q.loc["Cost of Revenue"].fillna(computed)
+    # --- [START OF LOGIC CHANGE] ---
     
-    if "Gross Profit" in is_q.index and "Revenue" in is_q.index and "Cost of Revenue" in is_q.index:
-        mask = is_q.loc["Gross Profit"].isna()
-        if mask.any():
-            computed = is_q.loc["Revenue"] - is_q.loc["Cost of Revenue"]
-            is_q.loc["Gross Profit"] = is_q.loc["Gross Profit"].fillna(computed)
-    
-    if "Operating Expenses" in is_q.index and {"R&D", "SG&A"}.issubset(is_q.index):
-        mask = is_q.loc["Operating Expenses"].isna()
-        if mask.any():
-            computed = is_q.loc["R&D"].fillna(0) + is_q.loc["SG&A"].fillna(0)
-            is_q.loc["Operating Expenses"] = is_q.loc["Operating Expenses"].fillna(computed)
-    
-    if "Operating Income" in is_q.index and {"Gross Profit", "Operating Expenses"}.issubset(is_q.index):
-        mask = is_q.loc["Operating Income"].isna()
-        if mask.any():
-            computed = is_q.loc["Gross Profit"] - is_q.loc["Operating Expenses"]
-            is_q.loc["Operating Income"] = is_q.loc["Operating Income"].fillna(computed)
-    
-    # Filter by date range
-    is_q = filter_by_date_range(is_q, start_date, end_date)
-    
-    # Calculate TTM if requested
+    # Do NOT filter by date yet.
+    # First, calculate TTM if requested, using the *full* DataFrame
     if output_type == "ttm":
-        result_df = is_q.T.rolling(4, min_periods=4).sum().T
+        # Calculate TTM on the *entire* quarterly dataset
+        data_to_filter = is_q.T.rolling(4, min_periods=4).sum().T
     else:
-        result_df = is_q
-    
+        # If not TTM, just use the quarterly data
+        data_to_filter = is_q
+
+    # NOW, filter the resulting DataFrame (either TTM or Q) by date
+    result_df = filter_by_date_range(data_to_filter, start_date, end_date)
+
+    # --- [END OF LOGIC CHANGE] ---
+
     # Format output
     output_data = {}
     for idx in result_df.index:
@@ -359,10 +314,9 @@ def build_income_statement(
                 "raw": float(val) if pd.notna(val) else None,
                 "formatted": format_usd_short(val)
             }
-    
+
     return {
         "company_name": company_name,
         "data": output_data,
         "periods": list(result_df.columns)
     }
-
