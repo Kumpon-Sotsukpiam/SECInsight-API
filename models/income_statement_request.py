@@ -40,8 +40,8 @@ class IncomeStatementRequest(BaseModel):
     
     @validator('output_type')
     def validate_output_type(cls, v):
-        if v not in ['quarterly', 'ttm']:
-            raise ValueError("output_type must be 'quarterly' or 'ttm'")
+        if v not in ['quarterly', 'ttm', 'annual']:
+            raise ValueError("output_type must be 'quarterly' or 'ttm' or 'annual'")
         return v
     
     @validator('start_date', 'end_date')
